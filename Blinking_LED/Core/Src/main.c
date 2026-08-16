@@ -21,6 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include"stdio.h"
+#include"string.h"
 
 /* USER CODE END Includes */
 
@@ -41,6 +43,8 @@
 
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart2;
+char msg[100];
+uint8_t rx_data;
 
 /* USER CODE BEGIN PV */
 
@@ -56,7 +60,62 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void LED_ON(void){
 
+	if(HAL_UART_Receive(&huart2,&rx_data,1,100)==HAL_OK){
+		if(rx_data == 'A'){
+			HAL_GPIO_TogglePin(GPIOB,GPIO_PIN_5);
+			if(HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_5)== GPIO_PIN_SET){
+				sprintf(msg, " LED is ON \r\n");
+				HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+			}
+			else{
+				sprintf(msg, " LED is OFF \r\n");
+				HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+
+			}
+		}
+
+	}
+}
+void UART_GPIO_CONTROLLER(void){
+	if(HAL_UART_Receive(&huart2,&rx_data,1,100)==HAL_OK){
+		if(rx_data == 'A'){
+			HAL_GPIO_TogglePin(GPIOB,GPIO_PIN_5);
+			sprintf(msg, "LED is Toggled \r\n");
+			HAL_UART_Transmit(&huart2,(uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+		}
+		else if(rx_data == '1'){
+				HAL_GPIO_WritePin(GPIOB,GPIO_PIN_5,GPIO_PIN_SET);
+				sprintf(msg, "LED is Forced On \r\n");
+				HAL_UART_Transmit(&huart2,(uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+
+		}
+		else if(rx_data == '0'){
+			HAL_GPIO_WritePin(GPIOB,GPIO_PIN_5,GPIO_PIN_RESET);
+			sprintf(msg, "LED is Forced OFF \r\n");
+			HAL_UART_Transmit(&huart2,(uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+
+		}
+		else if(rx_data == 'S'){
+			if(HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_5) == GPIO_PIN_SET){
+				sprintf(msg,"LED Status : ON \r\n");
+			}
+			else{
+				sprintf(msg,"LED Status : OFF \r\n");
+			}
+			HAL_UART_Transmit(&huart2,(uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+
+
+		}
+		else{
+			sprintf(msg, "Unknown Command = %c  \r\n", rx_data);
+			HAL_UART_Transmit(&huart2,(uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+
+		}
+
+	}
+}
 /* USER CODE END 0 */
 
 /**
@@ -98,10 +157,9 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  HAL_GPIO_WritePin(GPIOB,GPIO_PIN_5,GPIO_PIN_SET);
-	  HAL_Delay(1000);
-	  HAL_GPIO_WritePin(GPIOB,GPIO_PIN_5,GPIO_PIN_RESET);
-	  HAL_Delay(1000);
+
+	  UART_GPIO_CONTROLLER();
+
 
     /* USER CODE BEGIN 3 */
   }
