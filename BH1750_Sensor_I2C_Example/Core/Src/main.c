@@ -52,6 +52,8 @@ UART_HandleTypeDef huart2;
 char msg[100];
 uint8_t cmd = 0x10; // Start continuous high-resolution measurement
 uint8_t data[2];
+uint16_t raw_value;
+uint32_t lux;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -85,7 +87,6 @@ void BH1750_Start_Read(void){
 	HAL_I2C_Master_Receive(&hi2c1,0x46,data,2,HAL_MAX_DELAY);
 	sprintf(msg,"Data = %02X,%02X \r\n",data[0],data[1]);
 	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
-
 
 
 }
