@@ -88,6 +88,19 @@ void BH1750_Start_Read(void){
 	sprintf(msg,"Data = %02X,%02X \r\n",data[0],data[1]);
 	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
 
+	/* Converting 2 data bytes to Raw data of BH1750*/
+	raw_value = ((uint16_t)data[0] << 8) | data[1];
+	sprintf(msg,"raw_value  =%u \r\n",raw_value);
+	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+
+	/* Converting raw values to Lux */
+	lux =(raw_value * 10)/12;
+	sprintf(msg,"LUX  =%lu \r\n",lux);
+	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+
+
+
+
 
 }
 
