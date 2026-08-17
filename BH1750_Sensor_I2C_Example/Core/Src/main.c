@@ -50,6 +50,8 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 char msg[100];
+uint8_t cmd = 0x10; // Start continuous high-resolution measurement
+uint8_t data[2];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -74,6 +76,18 @@ void I2C_Test(void){
 		sprintf(msg,"BH1750 Sensor is Not Connected\r\n");
 		HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
 	}
+}
+void BH1750_Start_Read(void){
+	HAL_I2C_Master_Transmit(&hi2c1,0x46,&cmd,1,HAL_MAX_DELAY);
+	sprintf(msg, "Data is Transmitted\r\n");
+	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+
+	HAL_I2C_Master_Receive(&hi2c1,0x46,data,2,HAL_MAX_DELAY);
+	sprintf(msg,"Data = %02X,%02X \r\n",data[0],data[1]);
+	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+
+
+
 }
 
 /* USER CODE END 0 */
@@ -112,6 +126,8 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   I2C_Test();
+  BH1750_Start_Read();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -119,6 +135,7 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
+	  HAL_Delay(1000);
 
     /* USER CODE BEGIN 3 */
   }
