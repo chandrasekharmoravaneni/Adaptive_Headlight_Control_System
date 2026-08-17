@@ -21,6 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "stdio.h"
+#include "string.h"
 
 /* USER CODE END Includes */
 
@@ -47,7 +49,7 @@ TIM_HandleTypeDef htim3;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+char msg[100];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -62,6 +64,17 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/* Initially Test for Sensor Whether it is connected or not*/
+void I2C_Test(void){
+	if(HAL_I2C_IsDeviceReady(&hi2c1,0x46,3,100)==HAL_OK){
+		sprintf(msg,"BH1750 Sensor is Connected\r\n");
+		HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+	}
+	else{
+		sprintf(msg,"BH1750 Sensor is Not Connected\r\n");
+		HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+	}
+}
 
 /* USER CODE END 0 */
 
@@ -98,7 +111,7 @@ int main(void)
   MX_TIM3_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  I2C_Test();
   /* USER CODE END 2 */
 
   /* Infinite loop */
