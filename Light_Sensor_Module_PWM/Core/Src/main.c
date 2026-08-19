@@ -34,6 +34,9 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define BH1750_ADDR 0x46
+#define N  5
+#define MAX_PWM 999
+#define MAX_LUX 57000
 
 
 /* USER CODE END PD */
@@ -57,6 +60,11 @@ char msg[100];
 uint32_t RAW;
 uint8_t cmd = 0x10;
 uint8_t data[2];
+uint32_t sum;
+uint32_t Filtered_LUX;
+uint32_t target_pwm;
+uint32_t pwm_value = 0 ;
+
 
 /* USER CODE END PV */
 
@@ -73,7 +81,7 @@ static void MX_USART2_UART_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 void I2C_Test(void){
-	if(HAL_I2C_IsDeviceReady(&hi2c1,0x46,3,100)==HAL_OK){
+	if(HAL_I2C_IsDeviceReady(&hi2c1,BH1750_ADDR,3,100)==HAL_OK){
 		sprintf(msg,"BH1750 Sensor is Connected\r\n");
 		HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
 	}
@@ -83,11 +91,11 @@ void I2C_Test(void){
 	}
 }
 void BH1750_Start_Read(void){
-	HAL_I2C_Master_Transmit(&hi2c1,0x46,&cmd,1,HAL_MAX_DELAY);
+	HAL_I2C_Master_Transmit(&hi2c1,BH1750_ADDR,&cmd,1,HAL_MAX_DELAY);
 	sprintf(msg, "Data is Transmitted\r\n");
 	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
 
-	HAL_I2C_Master_Receive(&hi2c1,0x46,data,2,HAL_MAX_DELAY);
+	HAL_I2C_Master_Receive(&hi2c1,BH1750_ADDR,data,2,HAL_MAX_DELAY);
 	sprintf(msg,"Data = %02X,%02X \r\n",data[0],data[1]);
 	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
 
@@ -104,11 +112,17 @@ void BH1750_Start_Read(void){
 
 }
 void BH1750_ReadLux(void){
-	HAL_I2C_Master_Receive(&hi2c1,0x46,data,2,HAL_MAX_DELAY);
+
+	if(HAL_I2C_Master_Receive(&hi2c1,BH1750_ADDR,data,2,HAL_MAX_DELAY)==HAL_OK){
 	RAW = ((uint16_t)data[0] << 8) | data[1];
 	lux =(RAW * 10)/12;
 	sprintf(msg,"RAW = %lu,LUX  =%u \r\n",RAW,lux);
 	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+	}
+	else{
+		sprintf(msg,"Sensor is not providing data \r\n");
+		HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+	}
 
 }
 void BH1750_PWM_LED(void){
@@ -144,6 +158,46 @@ void BH1750_PWM_LED(void){
 	}
 
 }
+void Filtered_Lux(void){
+	sum = 0;
+	for(int i = 0; i < N; i++){
+		HAL_I2C_Master_Receive(&hi2c1,BH1750_ADDR,data,2,HAL_MAX_DELAY);
+		RAW = ((uint16_t)data[0] << 8) | data[1];
+		lux =(RAW * 10)/12;
+		sum+=lux;
+		HAL_Delay(30);
+
+	}
+	Filtered_LUX = sum/N;
+	sprintf(msg, "LUX = %u, FILTERED_LUX = %lu\r\n",lux,Filtered_LUX);
+	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+
+
+
+}
+
+
+void Adaptive_PWM(void){
+	target_pwm  = MAX_PWM -((Filtered_LUX * MAX_PWM)/MAX_LUX);
+	if(target_pwm > MAX_PWM) target_pwm = MAX_PWM;
+	if(pwm_value < target_pwm){
+		pwm_value += 10;
+		if(pwm_value> target_pwm){
+			pwm_value = target_pwm;
+		}
+	}
+	else if(pwm_value > target_pwm){
+		pwm_value -= 10;
+		if(pwm_value < target_pwm){
+			pwm_value = target_pwm;
+		}
+
+	}
+
+	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, pwm_value);
+
+}
+
 
 /* USER CODE END 0 */
 
@@ -190,9 +244,12 @@ int main(void)
   {
     /* USER CODE END WHILE */
 
-	  BH1750_ReadLux();
-	  BH1750_PWM_LED();
-	  HAL_Delay(2000);
+//	  BH1750_ReadLux();
+//	  BH1750_PWM_LED();
+//	  HAL_Delay(1000);
+	  Filtered_Lux();
+	  Adaptive_PWM();
+	  HAL_Delay(20);
 
 
     /* USER CODE BEGIN 3 */
