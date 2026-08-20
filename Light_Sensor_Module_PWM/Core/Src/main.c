@@ -33,10 +33,12 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define BH1750_ADDR 0x46
+#define BH1750_ADDR  0x46
 #define N  5
-#define MAX_PWM 999
-#define MAX_LUX 57000
+#define MAX_PWM   999U
+#define MAX_LUX   55000U
+#define PWM_STEP  100U
+#define LUX_HYSTERESIS 500U
 
 
 /* USER CODE END PD */
@@ -178,24 +180,49 @@ void Filtered_Lux(void){
 
 
 void Adaptive_PWM(void){
-	target_pwm  = MAX_PWM -((Filtered_LUX * MAX_PWM)/MAX_LUX);
-	if(target_pwm > MAX_PWM) target_pwm = MAX_PWM;
-	if(pwm_value < target_pwm){
-		pwm_value += 10;
-		if(pwm_value> target_pwm){
-			pwm_value = target_pwm;
-		}
-	}
-	else if(pwm_value > target_pwm){
-		pwm_value -= 10;
-		if(pwm_value < target_pwm){
-			pwm_value = target_pwm;
-		}
+	uint32_t light_lux = Filtered_LUX;
+	static uint32_t stable_lux = 0;
+	static uint8_t first_reading = 1;
+	   // Ignore small changes in the filtered sensor reading
+	    if (first_reading ||
+	        (Filtered_LUX > stable_lux &&
+	         (Filtered_LUX - stable_lux) >= LUX_HYSTERESIS) ||
+	        (stable_lux > Filtered_LUX &&
+	         (stable_lux - Filtered_LUX) >= LUX_HYSTERESIS))
+	    {
+	        stable_lux = Filtered_LUX;
+	        first_reading = 0;
+	    }
 
-	}
+	    light_lux = stable_lux;
+	if(light_lux > MAX_LUX) light_lux = MAX_LUX;
 
-	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, pwm_value);
+	// 0 lux => MAX_PWM (full brightness)
+	// MAX_LUX or above => 0 PWM (LED off)
+	target_pwm = ((MAX_LUX - light_lux) * MAX_PWM) / MAX_LUX;
+	if (pwm_value < target_pwm)
+	    {
+	        if ((target_pwm - pwm_value) <= PWM_STEP)
+	            pwm_value = target_pwm;
+	        else
+	            pwm_value += PWM_STEP;
+	    }
+	    else if (pwm_value > target_pwm)
+	    {
+	        if ((pwm_value - target_pwm) <= PWM_STEP)
+	            pwm_value = target_pwm;
+	        else
+	            pwm_value -= PWM_STEP;
+	    }
 
+	    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, pwm_value);
+	    snprintf(msg, sizeof(msg),
+	             "Filtered=%lu Target=%lu PWM=%lu\r\n",
+	             (unsigned long)Filtered_LUX,
+	             (unsigned long)target_pwm,
+	             (unsigned long)pwm_value);
+
+	    HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
 }
 
 
@@ -235,6 +262,9 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim3,TIM_CHANNEL_2);
+//  I2C_Test();
+//  BH1750_ReadLux();
+//  BH1750_Start_Read();
 
   /* USER CODE END 2 */
 
