@@ -48,6 +48,15 @@
 #define BME280_ID_REG   0xD0
 #define BME280_CHIP_ID  0x60
 
+#define NIGHT_ENTER_LUX       500U
+#define NIGHT_EXIT_LUX        600U
+
+#define DAYLIGHT_ENTER_LUX    2000U
+#define DAYLIGHT_EXIT_LUX     1800U
+
+#define NIGHT_QUALIFICATION_MS       500U
+#define DAYLIGHT_QUALIFICATION_MS   2000U
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -84,11 +93,22 @@ static void MX_I2C1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
+static LightState_t light_state = LIGHT_CLOUDY;
+static LightState_t pending_state = LIGHT_CLOUDY;
 
+static uint32_t state_change_start = 0;
+static uint8_t transition_pending = 0;
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+typedef enum {
+	LIGHT_NIGHT = 0,
+	LIGHT_DAYLIGHT,
+	LIGHT_CLOUDY
+} LightState_t;
+
+
 void I2C_Test(void){
 	if(HAL_I2C_IsDeviceReady(&hi2c1,BH1750_ADDR,3,100)==HAL_OK){
 		sprintf(msg,"BH1750 Sensor is Connected\r\n");
@@ -327,6 +347,91 @@ void Adaptive_PWM(void)
                       (uint8_t *)msg,
                       strlen(msg),
                       HAL_MAX_DELAY);
+}
+
+void Update_Light_State(uint32_t lux){
+    uint32_t now = HAL_GetTick();
+
+    LightState_t requested_state = light_state;
+    uint32_t qualification_time = 0;
+    /*================== STATE MACHINE =====================*/
+    switch(light_state){
+    case LIGHT_NIGHT:
+    	/**============NIGHT=======/
+        if (lux > NIGHT_EXIT_LUX)
+        {
+            requested_state = LIGHT_CLOUDY;
+            qualification_time = NIGHT_QUALIFICATION_MS;
+        }
+
+        break;
+    case LIGHT_CLOUDY:
+    	/*======== CLOUDY TO NIGHT=======*/
+    	if (lux < NIGHT_ENTER_LUX)
+    	{
+    	    requested_state = LIGHT_NIGHT;
+    	    qualification_time = NIGHT_QUALIFICATION_MS;
+    	}
+    	else if(lux > DAYLIGHT_ENTER_LUX){
+    		requested_state = LIGHT_DAYLIGHT;
+    		qualification_time = DAYLIGHT_QUALIFICATION_MS;
+
+    	}
+
+    	break;
+    case LIGHT_DAYLIGHT:
+    	/*=========Daylight -> Cloudy========*/
+        if (lux < DAYLIGHT_EXIT_LUX)
+        {
+            requested_state = LIGHT_CLOUDY;
+            qualification_time = DAYLIGHT_QUALIFICATION_MS;
+        }
+
+        break;
+
+
+    default:
+
+        light_state = LIGHT_CLOUDY;
+        transition_pending = 0;
+
+        break;
+
+    }
+
+    /*==================TEMPORAL QUALIFICATION*/
+    if (requested_state != light_state)
+        {
+            /* New transition candidate */
+
+            if (!transition_pending || pending_state != requested_state)
+            {
+                pending_state = requested_state;
+
+                state_change_start = now;
+
+                transition_pending = 1;
+            }
+
+
+            /* Has the condition remained valid long enough? */
+
+            if ((now - state_change_start) >= qualification_time)
+            {
+                light_state = pending_state;
+
+                transition_pending = 0;
+            }
+        }
+        else
+        {
+            /*
+             * Condition disappeared before
+             * qualification completed.
+             */
+
+            transition_pending = 0;
+        }
 }
 
 /* USER CODE END 0 */
