@@ -423,6 +423,86 @@ class HeadlightDashboard(QWidget):
         main_layout.addWidget(
             self.filtered_plot
         )
+        # ====================================================
+        # GRAPH 3 - ACTUAL PWM
+        # ====================================================
+
+        self.pwm_plot = pg.PlotWidget()
+
+        self.pwm_plot.setTitle(
+            "Real-Time Headlight PWM"
+        )
+
+        self.pwm_plot.setLabel(
+            "left",
+            "PWM"
+        )
+
+        self.pwm_plot.setLabel(
+            "bottom",
+            "Samples"
+        )
+
+        self.pwm_plot.setYRange(
+            0,
+            1000
+        )
+
+        self.pwm_plot.showGrid(
+            x=True,
+            y=True,
+            alpha=0.3
+        )
+
+        self.pwm_plot.setMinimumHeight(
+            200
+        )
+
+        self.pwm_curve = self.pwm_plot.plot(
+            pen=pg.mkPen(
+                width=2
+            )
+        )
+
+        main_layout.addWidget(
+            self.pwm_plot
+        )
+
+
+        # ====================================================
+        # GRAPH 4 - LIGHTING CONDITION
+        # ====================================================
+
+        self.state_plot = pg.PlotWidget()
+
+        self.state_plot.setTitle(
+            "Real-Time Lighting Condition"
+        )
+
+        self.state_plot.setLabel(
+            "left",
+            "Condition"
+        )
+
+        self.state_plot.setLabel(
+            "bottom",
+            "Samples"
+        )
+
+        self.state_plot.setYRange(
+            -0.2,
+            2.2
+        )
+
+        self.state_plot.showGrid(
+            x=True,
+            y=True,
+            alpha=0.3
+        )
+
+        self.state_plot.setMinimumHeight(
+            200
+        )
 
 
 
@@ -731,6 +811,22 @@ class HeadlightDashboard(QWidget):
             x,
             list(
                 self.filtered_lux_data
+            )
+        )
+        # GRAPH 3
+        self.pwm_curve.setData(
+            x,
+            list(
+                self.pwm_data
+            )
+        )
+
+
+        # GRAPH 4
+        self.state_curve.setData(
+            x,
+            list(
+                self.condition_data
             )
         )
 
