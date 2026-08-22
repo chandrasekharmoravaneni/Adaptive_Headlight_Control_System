@@ -43,6 +43,10 @@
 #define ADAPTIVE_PWM_STEP   10
 #define N 5
 
+#define BME280_ADDR_76  0xEC   // 0xEC
+#define BME280_ADDR_77  0xEE  // 0xEE
+#define BME280_ID_REG   0xD0
+#define BME280_CHIP_ID  0x60
 
 /* USER CODE END PD */
 
@@ -324,6 +328,7 @@ void Adaptive_PWM(void)
                       strlen(msg),
                       HAL_MAX_DELAY);
 }
+
 /* USER CODE END 0 */
 
 /**
@@ -362,7 +367,7 @@ int main(void)
   HAL_TIM_PWM_Start(&htim3,TIM_CHANNEL_2);
 //  I2C_Test();
 //  BH1750_ReadLux();
-// 	BH1750_Start_Read();
+//	BH1750_Start_Read();
 
   /* USER CODE END 2 */
 
