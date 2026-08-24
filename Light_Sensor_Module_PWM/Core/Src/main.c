@@ -198,8 +198,15 @@ void BH1750_PWM_LED(void){
 void Filtered_Lux(void){
 	static uint32_t filtered = 0;
 	static uint8_t filter_initialized = 0;
+	HAL_StatusTypeDef status;
 
-	HAL_I2C_Master_Receive(&hi2c1,BH1750_ADDR,data,2,HAL_MAX_DELAY);
+	status = HAL_I2C_Master_Receive(&hi2c1,BH1750_ADDR,data,2,100);
+	if(status != HAL_OK){
+		sprintf(msg,"FAULT: BH1750 I2C ERROR\r\n");
+		HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+		return;
+
+	}
 	RAW = ((uint16_t)data[0] << 8) | data[1];
 	lux =(RAW * 10U)/12U;
 	if (!filter_initialized){
