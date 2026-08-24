@@ -196,17 +196,23 @@ void BH1750_PWM_LED(void){
 
 }
 void Filtered_Lux(void){
-	sum = 0;
-	for(int i = 0; i < N; i++){
-		HAL_I2C_Master_Receive(&hi2c1,BH1750_ADDR,data,2,HAL_MAX_DELAY);
-		RAW = ((uint16_t)data[0] << 8) | data[1];
-		lux =(RAW * 10)/12;
-		sum+=lux;
-		HAL_Delay(30);
+	static uint32_t filtered = 0;
+	static uint8_t filter_initialized = 0;
+
+	HAL_I2C_Master_Receive(&hi2c1,BH1750_ADDR,data,2,HAL_MAX_DELAY);
+	RAW = ((uint16_t)data[0] << 8) | data[1];
+	lux =(RAW * 10U)/12U;
+	if (!filter_initialized){
+		filtered = lux;
+		filter_initialized = 1;
 
 	}
-	Filtered_LUX = sum/N;
-	sprintf(msg, "LUX = %u, FILTERED_LUX = %lu\r\n",lux,Filtered_LUX);
+	else
+	{
+		filtered = ((filtered * 3U) + lux ) / 4U;
+	}
+	Filtered_LUX = filtered;
+	sprintf(msg,"LUX = %lu, FILTERED_LUX = %lu\r\n",(unsigned long)lux,(unsigned long)Filtered_LUX);
 	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
 
 
@@ -542,7 +548,7 @@ int main(void)
 //	  HAL_Delay(1000);
 	  Filtered_Lux();
 	  Adaptive_PWM();
-	  HAL_Delay(20);
+	  HAL_Delay(50);
 
 
     /* USER CODE BEGIN 3 */
