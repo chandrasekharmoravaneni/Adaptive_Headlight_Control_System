@@ -614,99 +614,153 @@ class HeadlightDashboard(QWidget):
     # PARSE STM32 TELEMETRY
     # ========================================================
 
-    def parse_line(
-        self,
-        line
-    ):
+def parse_line(self, line):
 
-        """
-        Supports:
+    pattern = (
+        r"LUX\s*=\s*(\d+)\s+"
+        r"Filtered\s*=\s*(\d+)\s+"
+        r"Stable\s*=\s*(\d+)\s+"
+        r"State\s*=\s*(NIGHT|CLOUDY|DAYLIGHT)\s+"
+        r"Target\s*=\s*(\d+)\s+"
+        r"PWM\s*=\s*(\d+)"
+    )
 
-        LUX=24 Filtered=24 Stable=24 Target=999 PWM=800
+    match = re.search(
+        pattern,
+        line,
+        re.IGNORECASE
+    )
 
-        and also:
+    if not match:
+        print("NOT PARSED:", line)
+        return
 
-        LUX=24, Filtered=24, Stable=24, Target=999, PWM=800
-        """
+    lux = int(match.group(1))
+    filtered = int(match.group(2))
+    stable = int(match.group(3))
+    state = match.group(4).upper()
+    target_pwm = int(match.group(5))
+    pwm = int(match.group(6))
 
+    print(
+        f"PARSED -> LUX={lux}, "
+        f"Filtered={filtered}, "
+        f"Stable={stable}, "
+        f"State={state}, "
+        f"Target={target_pwm}, "
+        f"PWM={pwm}"
+    )
 
-        pattern = (
-            r"LUX\s*=\s*(\d+)"
-            r"[,\s]+"
-            r"Filtered\s*=\s*(\d+)"
-            r"[,\s]+"
-            r"Stable\s*=\s*(\d+)"
-            r"[,\s]+"
-            r"Target\s*=\s*(\d+)"
-            r"[,\s]+"
-            r"PWM\s*=\s*(\d+)"
-        )
-
-
-        match = re.search(
-            pattern,
-            line,
-            re.IGNORECASE
-        )
-
-
-        if not match:
-
-            return
-
-
-        try:
-
-            lux = int(
-                match.group(1)
-            )
-
-            filtered = int(
-                match.group(2)
-            )
-
-            stable = int(
-                match.group(3)
-            )
-
-            target_pwm = int(
-                match.group(4)
-            )
-
-            pwm = int(
-                match.group(5)
-            )
-
-
-        except ValueError:
-
-            return
-
-
-        self.update_dashboard(
-            lux,
-            filtered,
-            stable,
-            target_pwm,
-            pwm
-        )
+    self.update_dashboard(
+        lux,
+        filtered,
+        stable,
+        state,
+        target_pwm,
+        pwm
+    )
 
 
     # ========================================================
     # UPDATE DASHBOARD
     # ========================================================
 
-    def update_dashboard(
-        self,
-        lux,
-        filtered,
-        stable,
-        target_pwm,
-        pwm
-    ):
+ def update_dashboard(
+    self,
+    lux,
+    filtered,
+    stable,
+    state,
+    target_pwm,
+    pwm
+):
 
-        self.sample_number += 1
+    self.sample_number += 1
 
+    self.time_data.append(self.sample_number)
+    self.raw_lux_data.append(lux)
+    self.filtered_lux_data.append(filtered)
+    self.pwm_data.append(pwm)
+
+    # STM32 is the authority for lighting state
+    if state == "NIGHT":
+        condition = NIGHT
+        display_state = "NIGHT - HIGH PWM"
+
+    elif state == "CLOUDY":
+        condition = CLOUDY
+        display_state = "CLOUDY / LOW LIGHT - ADAPTIVE"
+
+    elif state == "DAYLIGHT":
+        condition = DAYLIGHT
+        display_state = "DAYLIGHT - OFF"
+
+    else:
+        condition = CLOUDY
+        display_state = "UNKNOWN"
+
+    self.condition_data.append(condition)
+
+    # Live values
+    self.raw_lux_label.setText(f"{lux} lux")
+    self.filtered_lux_label.setText(f"{filtered} lux")
+    self.stable_lux_label.setText(f"{stable} lux")
+    self.target_pwm_label.setText(str(target_pwm))
+    self.pwm_label.setText(str(pwm))
+    self.state_label.setText(display_state)
+
+    # Graphs
+    x = list(self.time_data)
+
+    self.raw_curve.setData(
+        x,
+        list(self.raw_lux_data)
+    )
+
+    self.filtered_curve.setData(
+        x,
+        list(self.filtered_lux_data)
+    )
+
+    self.pwm_curve.setData(
+        x,
+        list(self.pwm_data)
+    )
+
+    self.state_curve.setData(
+        x,
+        list(self.condition_data)
+    )
+
+    # Auto-scale lux
+    if len(self.raw_lux_data) > 1:
+
+        maximum_lux = max(
+            max(self.raw_lux_data),
+            max(self.filtered_lux_data)
+        )
+
+        minimum_lux = min(
+            min(self.raw_lux_data),
+            min(self.filtered_lux_data)
+        )
+
+        if maximum_lux <= 0:
+            maximum_lux = 100
+
+        margin = maximum_lux * 0.10
+
+        self.raw_plot.setYRange(
+            max(0, minimum_lux - margin),
+            maximum_lux + margin,
+            padding=0
+        )
+
+        self.filtered_plot.setYRange(
+            max(0, minimum_lux - margin),
+            maximum_lux + margin,
+            padding=0
+        )
 
         # ----------------------------------------------------
         # Store data
