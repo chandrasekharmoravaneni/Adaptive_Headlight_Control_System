@@ -48,6 +48,20 @@
 #define BME280_ID_REG   0xD0
 #define BME280_CHIP_ID  0x60
 
+#define NIGHT_ENTER_LUX       500U
+#define NIGHT_EXIT_LUX        600U
+
+#define DAYLIGHT_ENTER_LUX    2000U
+#define DAYLIGHT_EXIT_LUX     1800U
+
+#define NIGHT_ENTER_QUALIFICATION_MS       500U
+#define NIGHT_EXIT_QUALIFICATION_MS        300U
+
+#define DAYLIGHT_ENTER_QUALIFICATION_MS   2000U
+#define DAYLIGHT_EXIT_QUALIFICATION_MS     300U
+
+#define PWM_STEP                 10U
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -84,11 +98,25 @@ static void MX_I2C1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
+void Update_Light_State(uint32_t lux);
+void Adaptive_PWM(void);
 
+static uint32_t state_change_start = 0;
+static uint8_t transition_pending = 0;
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+typedef enum {
+	LIGHT_NIGHT = 0,
+	LIGHT_CLOUDY,
+	LIGHT_DAYLIGHT
+
+} LightState_t;
+
+static LightState_t light_state = LIGHT_CLOUDY;
+static LightState_t pending_state = LIGHT_CLOUDY;
+
 void I2C_Test(void){
 	if(HAL_I2C_IsDeviceReady(&hi2c1,BH1750_ADDR,3,100)==HAL_OK){
 		sprintf(msg,"BH1750 Sensor is Connected\r\n");
@@ -207,126 +235,258 @@ void Adaptive_PWM(void)
     }
 
     light_lux = stable_lux;
+    /* =============== UPDATE LIGHT STATE =========== */
+    Update_Light_State(light_lux);
+
+    /*=======PWM CONTROL BASED ON STATE===========*/
+    switch(light_state){
+
+    case LIGHT_NIGHT:
+    	/*
+    	 * Dark environment.
+    	 *
+    	 * Full headlight immediately after
+    	 * the night condition has been qualified.
+    	 */
+
+		target_pwm = MAX_PWM;
+
+		pwm_value = MAX_PWM;
+
+    	break;
+
+    	/*============ CLOUDY / LOW LIGHT ========*/
+    case LIGHT_CLOUDY:
+        /*
+         * Adaptive PWM.
+         *
+         * 600 lux  -> approximately maximum PWM
+         * 2000 lux -> approximately zero PWM
+         */
+
+        if (light_lux <= NIGHT_EXIT_LUX)
+        {
+            target_pwm = MAX_PWM;
+        }
+        else if (light_lux >= DAYLIGHT_ENTER_LUX)
+        {
+            target_pwm = 0U;
+        }
+        else
+        {
+            target_pwm =
+                ((DAYLIGHT_ENTER_LUX - light_lux)
+                 * MAX_PWM) /
+                (DAYLIGHT_ENTER_LUX - NIGHT_EXIT_LUX);
+        }
 
 
-    /* --------------------------------
-       2. DAYLIGHT
-       > 2000 lux → Headlight OFF
-       -------------------------------- */
+        /* ---------------------------------------------
+           Smooth PWM adjustment
+           --------------------------------------------- */
 
-    if (light_lux > DAYLIGHT_LUX)
-    {
+        if (pwm_value < target_pwm)
+        {
+            if ((target_pwm - pwm_value) <= PWM_STEP)
+
+            {
+                pwm_value = target_pwm;
+            }
+            else
+            {
+                pwm_value += PWM_STEP;
+            }
+        }
+        else if (pwm_value > target_pwm)
+        {
+            if ((pwm_value - target_pwm) <= PWM_STEP)
+            {
+                pwm_value = target_pwm;
+            }
+            else
+            {
+                pwm_value -= PWM_STEP;
+            }
+        }
+
+        break;
+
+    case LIGHT_DAYLIGHT:
+
+    	/*
+         * Strong daylight.
+         *
+         * Headlight OFF immediately once daylight
+         * has been temporally qualified.
+         */
+
         target_pwm = 0;
 
-        /* Immediate OFF */
         pwm_value = 0;
+
+        break;
+
+
+    default:
+
+        target_pwm = 0;
+        pwm_value = 0;
+
+        break;
+
     }
+    /* =====================================================
+       4. APPLY PWM
+       ===================================================== */
+
+    __HAL_TIM_SET_COMPARE(
+        &htim3,
+        TIM_CHANNEL_2,
+        pwm_value
+    );
 
 
-    /* --------------------------------
-       3. NIGHT / DARK
-       < 500 lux → Fast increase
-       -------------------------------- */
+    /* =====================================================
+       5. UART DEBUG
+       ===================================================== */
 
-    else if (light_lux < DARK_LUX)
+    const char *state_text;
+
+    switch (light_state)
     {
-        target_pwm = MAX_PWM;
+        case LIGHT_NIGHT:
+            state_text = "NIGHT";
+            break;
 
-        /*
-         * Fast PWM increase.
-         *
-         * Example:
-         * 0 → 100 → 200 → 300 → ...
-         * → 999
-         */
+        case LIGHT_CLOUDY:
+            state_text = "CLOUDY";
+            break;
 
-        if (pwm_value < target_pwm)
-        {
-            if ((target_pwm - pwm_value) <= NIGHT_PWM_STEP)
-                pwm_value = target_pwm;
-            else
-                pwm_value += NIGHT_PWM_STEP;
-        }
+        case LIGHT_DAYLIGHT:
+            state_text = "DAYLIGHT";
+            break;
 
-        /*
-         * If PWM is already higher than target,
-         * bring it down normally.
-         */
-        else if (pwm_value > target_pwm)
-        {
-            pwm_value = target_pwm;
-        }
+        default:
+            state_text = "UNKNOWN";
+            break;
     }
 
 
-    /* --------------------------------
-       4. CLOUDY / LOW LIGHT
-       500–2000 lux → Adaptive PWM
-       -------------------------------- */
+    snprintf(
+        msg,
+        sizeof(msg),
 
-    else
-    {
-        /*
-         * 500 lux  → 999 PWM
-         * 2000 lux → 0 PWM
-         *
-         * Linear relationship:
-         *
-         * Lux ↑ → PWM ↓
-         * Lux ↓ → PWM ↑
-         */
+        "LUX=%lu Filtered=%lu Stable=%lu "
+        "State=%s Target=%lu PWM=%lu\r\n",
 
-        target_pwm = ((DAYLIGHT_LUX - light_lux) * MAX_PWM) / (DAYLIGHT_LUX - DARK_LUX);
+        (unsigned long)lux,
+
+        (unsigned long)Filtered_LUX,
+
+        (unsigned long)light_lux,
+
+        state_text,
+
+        (unsigned long)target_pwm,
+
+        (unsigned long)pwm_value
+    );
 
 
-        /* Smooth PWM increase */
+    HAL_UART_Transmit(
+        &huart2,
+        (uint8_t *)msg,
+        strlen(msg),
+        HAL_MAX_DELAY
+    );
+}
 
-        if (pwm_value < target_pwm)
+void Update_Light_State(uint32_t lux){
+    uint32_t now = HAL_GetTick();
+
+    LightState_t requested_state = light_state;
+    uint32_t qualification_time = 0U;
+    /*================== STATE MACHINE =====================*/
+    switch(light_state){
+
+    case LIGHT_NIGHT:
+    	/**============NIGHT=======*/
+        if (lux > NIGHT_EXIT_LUX)
         {
-            if ((target_pwm - pwm_value) <= ADAPTIVE_PWM_STEP)
-                pwm_value = target_pwm;
-            else
-                pwm_value += ADAPTIVE_PWM_STEP;
+            requested_state = LIGHT_CLOUDY;
+            qualification_time = NIGHT_EXIT_QUALIFICATION_MS;
         }
 
+        break;
 
-        /* Smooth PWM decrease */
+        /*======== CLOUDY TO NIGHT=======*/
+    case LIGHT_CLOUDY:
 
-        else if (pwm_value > target_pwm)
+    	if (lux < NIGHT_ENTER_LUX)
+    	{
+    	    requested_state = LIGHT_NIGHT;
+    	    qualification_time = NIGHT_ENTER_QUALIFICATION_MS;
+    	}
+    	else if(lux > DAYLIGHT_ENTER_LUX){
+    		requested_state = LIGHT_DAYLIGHT;
+    		qualification_time = DAYLIGHT_ENTER_QUALIFICATION_MS;
+
+    	}
+
+    	break;
+    case LIGHT_DAYLIGHT:
+    	/*=========Daylight -> Cloudy========*/
+        if (lux < DAYLIGHT_EXIT_LUX)
         {
-            if ((pwm_value - target_pwm) <= ADAPTIVE_PWM_STEP)
-                pwm_value = target_pwm;
-            else
-                pwm_value -= ADAPTIVE_PWM_STEP;
+            requested_state = LIGHT_CLOUDY;
+            qualification_time = DAYLIGHT_EXIT_QUALIFICATION_MS;
         }
+
+        break;
+
+
+    default:
+
+        light_state = LIGHT_CLOUDY;
+        transition_pending = 0U;
+
+        break;
+
     }
 
+    /*==================TEMPORAL QUALIFICATION*/
+    if (requested_state != light_state)
+        {
+            /* New transition candidate */
 
-    /* --------------------------------
-       5. Apply PWM
-       -------------------------------- */
+            if (!transition_pending || pending_state != requested_state)
+            {
+                pending_state = requested_state;
 
-    __HAL_TIM_SET_COMPARE(&htim3,
-                          TIM_CHANNEL_2,
-                          pwm_value);
+                state_change_start = now;
+
+                transition_pending = 1U;
+            }
 
 
-    /* --------------------------------
-       6. Debug output
-       -------------------------------- */
+            /* Has the condition remained valid long enough? */
 
-    snprintf(msg, sizeof(msg),
-             "LUX=%lu Filtered=%lu Stable=%lu Target=%lu PWM=%lu\r\n",
-             (unsigned long)light_lux,
-             (unsigned long)Filtered_LUX,
-             (unsigned long)stable_lux,
-             (unsigned long)target_pwm,
-             (unsigned long)pwm_value);
+            if ((now - state_change_start) >= qualification_time)
+            {
+                light_state = pending_state;
 
-    HAL_UART_Transmit(&huart2,
-                      (uint8_t *)msg,
-                      strlen(msg),
-                      HAL_MAX_DELAY);
+                transition_pending = 0U;
+            }
+        }
+        else
+        {
+            /*
+             * Condition disappeared before
+             * qualification completed.
+             */
+
+            transition_pending = 0U;
+        }
 }
 
 /* USER CODE END 0 */
