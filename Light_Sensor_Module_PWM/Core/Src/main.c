@@ -103,6 +103,7 @@ void Adaptive_PWM(void);
 
 static uint32_t state_change_start = 0;
 static uint8_t transition_pending = 0;
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -110,12 +111,16 @@ static uint8_t transition_pending = 0;
 typedef enum {
 	LIGHT_NIGHT = 0,
 	LIGHT_CLOUDY,
-	LIGHT_DAYLIGHT
+	LIGHT_DAYLIGHT,
+	LIGHT_FAULT
 
 } LightState_t;
 
 static LightState_t light_state = LIGHT_CLOUDY;
 static LightState_t pending_state = LIGHT_CLOUDY;
+static uint8_t sensor_fault = 0;
+static uint32_t sensor_fault_count = 0;
+static uint32_t last_valid_lux = 0;
 
 void I2C_Test(void){
 	if(HAL_I2C_IsDeviceReady(&hi2c1,BH1750_ADDR,3,100)==HAL_OK){
@@ -200,15 +205,34 @@ void Filtered_Lux(void){
 	static uint8_t filter_initialized = 0;
 	HAL_StatusTypeDef status;
 
+	/*===========================BH1750 SENSOR READ=================*/
+
 	status = HAL_I2C_Master_Receive(&hi2c1,BH1750_ADDR,data,2,100);
+
+	/*==================== I2C COMMUNICATION FAULT =====================*/
 	if(status != HAL_OK){
+		sensor_fault = 1;
+		sensor_fault_count++;
 		sprintf(msg,"FAULT: BH1750 I2C ERROR\r\n");
 		HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
 		return;
 
 	}
+	/*================ CONVERT SENSOR DATA ==================*/
 	RAW = ((uint16_t)data[0] << 8) | data[1];
 	lux =(RAW * 10U)/12U;
+	/*================= RANGE VALIDATION ===================*/
+    if (lux > 100000U)
+    {
+        sensor_fault = 1;
+        sensor_fault_count++;
+
+        return;
+    }
+    sensor_fault = 0;
+
+    last_valid_lux = lux;
+
 	if (!filter_initialized){
 		filtered = lux;
 		filter_initialized = 1;
@@ -216,6 +240,7 @@ void Filtered_Lux(void){
 	}
 	else
 	{
+		/* ================ IIR FIRST ORDER FILTER ===============*/
 		filtered = ((filtered * 3U) + lux ) / 4U;
 	}
 	Filtered_LUX = filtered;
@@ -249,7 +274,13 @@ void Adaptive_PWM(void)
 
     light_lux = stable_lux;
     /* =============== UPDATE LIGHT STATE =========== */
-    Update_Light_State(light_lux);
+    if(sensor_fault){
+    	light_state = LIGHT_FAULT;
+    }
+    else
+    {
+    	Update_Light_State(light_lux);
+    }
 
     /*=======PWM CONTROL BASED ON STATE===========*/
     switch(light_state){
@@ -339,6 +370,13 @@ void Adaptive_PWM(void)
 
         break;
 
+    case LIGHT_FAULT:
+    	/* ===== SENSOR FAILURE ===========*/
+        target_pwm = 500;
+
+        pwm_value = 500;
+
+
 
     default:
 
@@ -378,6 +416,10 @@ void Adaptive_PWM(void)
         case LIGHT_DAYLIGHT:
             state_text = "DAYLIGHT";
             break;
+
+        case LIGHT_FAULT:
+        	state_text = "FAULT";
+        	break;
 
         default:
             state_text = "UNKNOWN";
@@ -540,7 +582,7 @@ int main(void)
   HAL_TIM_PWM_Start(&htim3,TIM_CHANNEL_2);
 //  I2C_Test();
 //  BH1750_ReadLux();
-//	BH1750_Start_Read();
+	BH1750_Start_Read();
 
   /* USER CODE END 2 */
 
