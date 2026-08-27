@@ -1,9 +1,0 @@
-../Core/Src/main.c:68:6:LED_ON	4
-../Core/Src/main.c:86:6:UART_GPIO_CONTROLLER	7
-../Core/Src/main.c:124:6:ADC_UART_MONITOR	2
-../Core/Src/main.c:141:5:main	1
-../Core/Src/main.c:192:6:SystemClock_Config	3
-../Core/Src/main.c:239:13:MX_ADC1_Init	3
-../Core/Src/main.c:291:13:MX_USART2_UART_Init	2
-../Core/Src/main.c:324:13:MX_GPIO_Init	1
-../Core/Src/main.c:376:6:Error_Handler	1
