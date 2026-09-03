@@ -79,7 +79,7 @@ These mechanisms improve stability and prevent unnecessary state changes caused 
 
 | Interface | Purpose |
 |-----------|---------|
-| **I²C** | BH1750 / BME280 sensor communication |
+| **I²C** | BH1750 sensor communication |
 | **TIM3 PWM** | LED headlight brightness control |
 | **UART** | Real-time telemetry to PC dashboard |
 
